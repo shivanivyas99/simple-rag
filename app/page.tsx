@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, CSSProperties } from "react";
 
 export default function Home() {
-  const [question, setQuestion] = useState<string>("");
-  const [messages, setMessages] = useState<{ role: string; content: string }[]>([]);
+  const [question, setQuestion] = useState("");
+  const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
 
@@ -37,7 +37,7 @@ export default function Home() {
 
     setIsLoading(true);
 
-    const updatedMessages = [...messages, { role: "user", content: question }];
+    const updatedMessages = [...messages, { role: "user" as const, content: question }];
     setMessages(updatedMessages);
 
     try {
@@ -67,9 +67,9 @@ export default function Home() {
 
   return (
     <div style={styles.container}>
-      <div style={styles.header}>
-        <h1 style={styles.title}>Ask Me Anything</h1>
-      </div>
+      <header style={styles.header}>
+        <h1 style={styles.title}>AI Assistant</h1>
+      </header>
 
       <div style={styles.chatWindow}>
         {messages.map((msg, index) => (
@@ -78,9 +78,9 @@ export default function Home() {
             style={{
               ...styles.message,
               alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
-              backgroundColor: msg.role === "user" ? "#007BFF" : "#444",
+              backgroundColor: msg.role === "user" ? "#2563EB" : "#374151",
               color: "#fff",
-            }}
+            } as React.CSSProperties}
           >
             {msg.content}
           </div>
@@ -92,17 +92,35 @@ export default function Home() {
           type="text"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          placeholder="Type your question here..."
+          placeholder="Ask me anything..."
           style={styles.inputBox}
         />
-        <button onClick={handleAskQuestion} style={styles.sendButton} disabled={isLoading}>
+        <button 
+          onClick={handleAskQuestion} 
+          style={{
+            ...styles.sendButton,
+            opacity: isLoading ? 0.7 : 1,
+          }} 
+          disabled={isLoading}
+        >
           {isLoading ? "Loading..." : "Send"}
         </button>
       </div>
 
       <div style={styles.uploadSection}>
-        <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-        <button onClick={handleFileUpload} style={styles.uploadButton} disabled={!file}>
+        <input 
+          type="file" 
+          onChange={(e) => setFile(e.target.files?.[0] || null)} 
+          style={styles.fileInput} 
+        />
+        <button 
+          onClick={handleFileUpload} 
+          style={{
+            ...styles.uploadButton,
+            opacity: !file ? 0.7 : 1,
+          }} 
+          disabled={!file}
+        >
           Upload File
         </button>
       </div>
@@ -110,36 +128,110 @@ export default function Home() {
   );
 }
 
-const styles = {
-  container: { /* same as before */ },
-  header: {
+const styles: Record<string, CSSProperties> = {
+  container: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: "100vh",
+    backgroundColor: "#000000",
+    color: "#fff",
+    fontFamily: "'Inter', system-ui, sans-serif",
     padding: "20px",
-    textAlign: "center" as const,
+  },
+  header: {
+    padding: "24px",
+    textAlign: "center",
+    marginBottom: "32px",
   },
   title: {
-    color: "#fff",
-    margin: 0,
+    fontSize: "2.5rem",
+    fontWeight: "700",
+    background: "linear-gradient(to right, #2563EB, #4F46E5)",
+    WebkitBackgroundClip: "text",
+    WebkitTextFillColor: "transparent",
+    letterSpacing: "-0.025em",
   },
-  chatWindow: { /* same as before */ },
-  message: { /* same as before */ },
-  inputContainer: { /* same as before */ },
-  inputBox: { /* same as before */ },
-  sendButton: { /* same as before */ },
+  chatWindow: {
+    display: "flex",
+    flexDirection: "column",
+    width: "100%",
+    maxWidth: "768px",
+    minHeight: "400px",
+    border: "1px solid #1F2937",
+    borderRadius: "16px",
+    padding: "20px",
+    overflowY: "auto",
+    backgroundColor: "#111111",
+    marginBottom: "24px",
+    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+  },
+  message: {
+    maxWidth: "80%",
+    padding: "12px 18px",
+    borderRadius: "16px",
+    marginBottom: "12px",
+    wordBreak: "break-word",
+    fontSize: "0.95rem",
+    lineHeight: "1.5",
+    boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+  },
+  inputContainer: {
+    display: "flex",
+    alignItems: "center",
+    width: "100%",
+    maxWidth: "768px",
+    gap: "12px",
+    marginBottom: "24px",
+  },
+  inputBox: {
+    flex: 1,
+    padding: "16px",
+    borderRadius: "12px",
+    border: "1px solid #1F2937",
+    fontSize: "1rem",
+    backgroundColor: "#111111",
+    color: "#fff",
+    transition: "border-color 0.3s ease",
+    outline: "none",
+  },
+  sendButton: {
+    padding: "16px 24px",
+    borderRadius: "12px",
+    border: "none",
+    background: "linear-gradient(to right, #2563EB, #4F46E5)",
+    color: "#fff",
+    fontSize: "1rem",
+    fontWeight: "500",
+    cursor: "pointer",
+    transition: "transform 0.2s ease, opacity 0.2s ease",
+  },
   uploadSection: {
     display: "flex",
     alignItems: "center",
-    padding: "10px",
-    borderTop: "1px solid #444",
-    backgroundColor: "#40414F",
+    justifyContent: "center",
+    width: "100%",
+    maxWidth: "768px",
+    padding: "16px",
+    backgroundColor: "#111111",
+    borderRadius: "12px",
+    border: "1px solid #1F2937",
   },
   uploadButton: {
-    marginLeft: "10px",
-    padding: "10px 20px",
-    fontSize: "16px",
-    backgroundColor: "#28A745",
+    marginLeft: "12px",
+    padding: "12px 20px",
+    fontSize: "0.95rem",
+    background: "linear-gradient(to right, #059669, #10B981)",
     color: "#fff",
     border: "none",
-    borderRadius: "5px",
+    borderRadius: "12px",
     cursor: "pointer",
+    transition: "transform 0.2s ease, opacity 0.2s ease",
+    fontWeight: "500",
+  },
+  fileInput: {
+    fontSize: "0.95rem",
+    color: "#9CA3AF",
   },
 };
