@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Pinecone } from '@pinecone-database/pinecone';
+import OpenAI from 'openai';
 
 if (!process.env.PINECONE_API_KEY) {
   throw new Error('PINECONE_API_KEY is not set');
@@ -9,8 +10,16 @@ if (!process.env.PINECONE_INDEX_NAME) {
   throw new Error('PINECONE_INDEX_NAME is not set');
 }
 
+if (!process.env.OPENAI_API_KEY) {
+  throw new Error('OPENAI_API_KEY is not set');
+}
+
 const pinecone = new Pinecone({
   apiKey: process.env.PINECONE_API_KEY,
+});
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
 export async function POST(req: NextRequest) {
@@ -28,27 +37,35 @@ export async function POST(req: NextRequest) {
     try {
       // Convert file to text and truncate if needed
       const text = await file.text();
-      const truncatedText = text.slice(0, 20000); // Limit to first 20000 characters
+      const truncatedText = text.slice(0, 20000);
+
+      // Generate embeddings using OpenAI
+      const embedding = await openai.embeddings.create({
+        model: "text-embedding-3-small",
+        input: truncatedText,
+      });
+      console.log(`File "${file.name}" successfully converted to vector embeddings`);
 
       // Initialize the index
       const indexName = process.env.PINECONE_INDEX_NAME;
       if (!indexName) throw new Error('PINECONE_INDEX_NAME is not set');
       const index = pinecone.index(indexName);
 
-      // Create a vector from the text
+      const docId = `doc_${Date.now()}`;
+      // Create a vector using the embeddings
       const vector = {
-        id: `doc_${Date.now()}`,
-        values: Array.from({ length: 1024 }, () => Math.random()),
+        id: docId,
+        values: embedding.data[0].embedding,
         metadata: {
           filename: file.name,
           text: truncatedText,
-          fullLength: text.length // Store original length for reference
+          fullLength: text.length
         },
       };
 
       // Upsert the vector to Pinecone
       await index.upsert([vector]);
-      console.log(`File "${file.name}" successfully stored in Pinecone database with ID: doc_${Date.now()}`);
+      console.log(`File "${file.name}" successfully stored in Pinecone database with ID: ${docId}`);
     } catch (innerError: any) {
       console.error("Pinecone operation failed:", innerError);
       return NextResponse.json(
