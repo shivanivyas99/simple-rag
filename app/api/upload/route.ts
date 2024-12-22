@@ -14,8 +14,13 @@ if (!process.env.OPENAI_API_KEY) {
   throw new Error('OPENAI_API_KEY is not set');
 }
 
+if (!process.env.PINECONE_ENVIRONMENT) {
+  throw new Error('PINECONE_ENVIRONMENT is not set');
+}
+
 const pinecone = new Pinecone({
   apiKey: process.env.PINECONE_API_KEY,
+  environment: process.env.PINECONE_ENVIRONMENT
 });
 
 const openai = new OpenAI({
