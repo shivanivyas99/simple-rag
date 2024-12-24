@@ -4,39 +4,49 @@ import { useState, CSSProperties } from "react";
 
 export default function Home() {
   const [question, setQuestion] = useState("");
-  const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
+  const [messages, setMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  const [uploadStatus, setUploadStatus] = useState<string>("");
 
-  const handleFileUpload = async () => {
-    if (!file) return alert("Please select a file to upload.");
+  const handleFileUpload = async (file: File | null) => {
+    if (!file) {
+      console.error('No file selected');
+      return;
+    }
+
+    setUploadStatus("Uploading...");
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append('file', file);
 
     try {
-      const response = await fetch("/api/upload", {
-        method: "POST",
+      const response = await fetch('/api/ask', {
+        method: 'POST',
         body: formData,
       });
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || "Failed to upload file");
+        throw new Error(error.error || 'Upload failed');
       }
 
-      alert("File uploaded successfully!");
+      const data = await response.json();
+      setUploadStatus(`Successfully uploaded: ${file.name}`);
       setFile(null);
+      // Clear file input
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+      if (fileInput) fileInput.value = '';
     } catch (error) {
-      console.error("Error uploading file:", error);
-      alert(error instanceof Error ? error.message : "Failed to upload file. Try again later.");
+      console.error('Error uploading file:', error);
+      setUploadStatus(error instanceof Error ? error.message : 'Upload failed');
     }
   };
 
-  const handleAskQuestion = async () => {
-    if (question.trim() === "") return alert("Please enter a question.");
+  const handleAskQuestion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (question.trim() === "") return;
 
     setIsLoading(true);
-
     const updatedMessages = [...messages, { role: "user" as const, content: question }];
     setMessages(updatedMessages);
 
@@ -47,19 +57,28 @@ export default function Home() {
         body: JSON.stringify({ question }),
       });
 
-      if (!response.ok) throw new Error("Failed to fetch answer");
+      if (!response.ok) {
+        const errorDetails = await response.json();
+        throw new Error(errorDetails.error || "Failed to fetch answer");
+      }
 
       const data = await response.json();
+      const matchesText = data.matches
+        .map((match: { text: string; score: number }, index: number) => {
+          return `Match ${index + 1} (Score: ${(match.score * 100).toFixed(1)}%):\n${match.text}`;
+        })
+        .join("\n\n");
 
       setMessages([
         ...updatedMessages,
-        { role: "assistant", content: `Context:\n${data.context}` },
-        { role: "assistant", content: data.answer },
+        { role: "assistant" as const, content: matchesText },
       ]);
       setQuestion("");
     } catch (error) {
-      console.error("Error fetching answer:", error);
-      alert("Something went wrong. Try again later.");
+      setMessages([
+        ...updatedMessages,
+        { role: "assistant", content: `Error: ${error instanceof Error ? error.message : "Failed to get response"}` },
+      ]);
     } finally {
       setIsLoading(false);
     }
@@ -68,61 +87,76 @@ export default function Home() {
   return (
     <div style={styles.container}>
       <header style={styles.header}>
-        <h1 style={styles.title}>AI Assistant</h1>
+        <h1 style={styles.title}>AI Document Assistant</h1>
+        <p style={styles.subtitle}>Upload documents and ask questions about them</p>
       </header>
 
-      <div style={styles.chatWindow}>
-        {messages.map((msg, index) => (
-          <div
-            key={index}
-            style={{
-              ...styles.message,
-              alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
-              backgroundColor: msg.role === "user" ? "#2563EB" : "#374151",
-              color: "#fff",
-            } as React.CSSProperties}
-          >
-            {msg.content}
+      <div style={styles.mainContent}>
+        <div style={styles.uploadSection}>
+          <h2 style={styles.sectionTitle}>Upload Documents</h2>
+          <div style={styles.uploadControls}>
+            <input
+              type="file"
+              accept=".txt,.doc,.docx,.pdf"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              style={styles.fileInput}
+            />
+            <button
+              onClick={() => file && handleFileUpload(file)}
+              style={{
+                ...styles.button,
+                ...styles.uploadButton,
+                opacity: !file ? 0.7 : 1,
+              }}
+              disabled={!file}
+            >
+              {uploadStatus === "Uploading..." ? "Uploading..." : "Upload"}
+            </button>
           </div>
-        ))}
-      </div>
+          {uploadStatus && <p style={styles.uploadStatus}>{uploadStatus}</p>}
+        </div>
 
-      <div style={styles.inputContainer}>
-        <input
-          type="text"
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder="Ask me anything..."
-          style={styles.inputBox}
-        />
-        <button 
-          onClick={handleAskQuestion} 
-          style={{
-            ...styles.sendButton,
-            opacity: isLoading ? 0.7 : 1,
-          }} 
-          disabled={isLoading}
-        >
-          {isLoading ? "Loading..." : "Send"}
-        </button>
-      </div>
+        <div style={styles.chatSection}>
+          <h2 style={styles.sectionTitle}>Ask Questions</h2>
+          <div style={styles.chatWindow}>
+            {messages.map((msg, index) => (
+              <div
+                key={index}
+                style={{
+                  ...styles.message,
+                  ...(msg.role === "user" ? styles.userMessage : styles.assistantMessage),
+                }}
+              >
+                <strong style={styles.messageHeader}>
+                  {msg.role === "user" ? "You:" : "Assistant:"}
+                </strong>
+                <pre style={styles.messageContent}>{msg.content}</pre>
+              </div>
+            ))}
+          </div>
 
-      <div style={styles.uploadSection}>
-        <input 
-          type="file" 
-          onChange={(e) => setFile(e.target.files?.[0] || null)} 
-          style={styles.fileInput} 
-        />
-        <button 
-          onClick={handleFileUpload} 
-          style={{
-            ...styles.uploadButton,
-            opacity: !file ? 0.7 : 1,
-          }} 
-          disabled={!file}
-        >
-          Upload File
-        </button>
+          <form onSubmit={handleAskQuestion} style={styles.inputForm}>
+            <input
+              type="text"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              placeholder="Ask about your documents..."
+              style={styles.inputBox}
+              disabled={isLoading}
+            />
+            <button
+              type="submit"
+              style={{
+                ...styles.button,
+                ...styles.sendButton,
+                opacity: isLoading ? 0.7 : 1,
+              }}
+              disabled={isLoading || !question.trim()}
+            >
+              {isLoading ? "Processing..." : "Ask"}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );
@@ -130,108 +164,132 @@ export default function Home() {
 
 const styles: Record<string, CSSProperties> = {
   container: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
     minHeight: "100vh",
-    backgroundColor: "#000000",
-    color: "#fff",
+    backgroundColor: "#0f172a",
+    color: "#e2e8f0",
+    padding: "2rem",
     fontFamily: "'Inter', system-ui, sans-serif",
-    padding: "20px",
   },
   header: {
-    padding: "24px",
     textAlign: "center",
-    marginBottom: "32px",
+    marginBottom: "2rem",
   },
   title: {
     fontSize: "2.5rem",
     fontWeight: "700",
-    background: "linear-gradient(to right, #2563EB, #4F46E5)",
+    background: "linear-gradient(to right, #60a5fa, #3b82f6)",
     WebkitBackgroundClip: "text",
     WebkitTextFillColor: "transparent",
-    letterSpacing: "-0.025em",
+    marginBottom: "0.5rem",
+  },
+  subtitle: {
+    color: "#94a3b8",
+    fontSize: "1.1rem",
+  },
+  mainContent: {
+    maxWidth: "1200px",
+    margin: "0 auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: "2rem",
+  },
+  sectionTitle: {
+    fontSize: "1.5rem",
+    fontWeight: "600",
+    marginBottom: "1rem",
+    color: "#e2e8f0",
+  },
+  uploadSection: {
+    backgroundColor: "#1e293b",
+    padding: "1.5rem",
+    borderRadius: "1rem",
+    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+  },
+  uploadControls: {
+    display: "flex",
+    gap: "1rem",
+    alignItems: "center",
+  },
+  uploadStatus: {
+    marginTop: "1rem",
+    color: "#94a3b8",
+  },
+  chatSection: {
+    backgroundColor: "#1e293b",
+    padding: "1.5rem",
+    borderRadius: "1rem",
+    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
   },
   chatWindow: {
     display: "flex",
     flexDirection: "column",
-    width: "100%",
-    maxWidth: "768px",
-    minHeight: "400px",
-    border: "1px solid #1F2937",
-    borderRadius: "16px",
-    padding: "20px",
+    gap: "1rem",
+    marginBottom: "1rem",
+    maxHeight: "500px",
     overflowY: "auto",
-    backgroundColor: "#111111",
-    marginBottom: "24px",
-    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+    padding: "1rem",
   },
   message: {
+    padding: "1rem",
+    borderRadius: "0.5rem",
     maxWidth: "80%",
-    padding: "12px 18px",
-    borderRadius: "16px",
-    marginBottom: "12px",
-    wordBreak: "break-word",
-    fontSize: "0.95rem",
-    lineHeight: "1.5",
-    boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
   },
-  inputContainer: {
+  userMessage: {
+    alignSelf: "flex-end",
+    backgroundColor: "#3b82f6",
+  },
+  assistantMessage: {
+    alignSelf: "flex-start",
+    backgroundColor: "#374151",
+  },
+  messageHeader: {
+    display: "block",
+    marginBottom: "0.5rem",
+    fontSize: "0.9rem",
+  },
+  messageContent: {
+    margin: 0,
+    whiteSpace: "pre-wrap",
+    fontFamily: "inherit",
+    fontSize: "0.95rem",
+  },
+  inputForm: {
     display: "flex",
-    alignItems: "center",
-    width: "100%",
-    maxWidth: "768px",
-    gap: "12px",
-    marginBottom: "24px",
+    gap: "1rem",
+  },
+  button: {
+    padding: "0.75rem 1.5rem",
+    borderRadius: "0.5rem",
+    border: "none",
+    fontSize: "1rem",
+    fontWeight: "500",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+    color: "white",
+  },
+  uploadButton: {
+    backgroundColor: "#059669",
+  },
+  sendButton: {
+    backgroundColor: "#3b82f6",
+  },
+  fileInput: {
+    flex: 1,
+    padding: "0.5rem",
+    borderRadius: "0.5rem",
+    backgroundColor: "#2d3748",
+    color: "#e2e8f0",
+    border: "1px solid #4a5568",
   },
   inputBox: {
     flex: 1,
-    padding: "16px",
-    borderRadius: "12px",
-    border: "1px solid #1F2937",
+    padding: "0.75rem 1rem",
+    borderRadius: "0.5rem",
+    border: "1px solid #4a5568",
+    backgroundColor: "#2d3748",
+    color: "#e2e8f0",
     fontSize: "1rem",
-    backgroundColor: "#111111",
-    color: "#fff",
-    transition: "border-color 0.3s ease",
     outline: "none",
-  },
-  sendButton: {
-    padding: "16px 24px",
-    borderRadius: "12px",
-    border: "none",
-    background: "linear-gradient(to right, #2563EB, #4F46E5)",
-    color: "#fff",
-    fontSize: "1rem",
-    fontWeight: "500",
-    cursor: "pointer",
-    transition: "transform 0.2s ease, opacity 0.2s ease",
-  },
-  uploadSection: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-    maxWidth: "768px",
-    padding: "16px",
-    backgroundColor: "#111111",
-    borderRadius: "12px",
-    border: "1px solid #1F2937",
-  },
-  uploadButton: {
-    marginLeft: "12px",
-    padding: "12px 20px",
-    fontSize: "0.95rem",
-    background: "linear-gradient(to right, #059669, #10B981)",
-    color: "#fff",
-    border: "none",
-    borderRadius: "12px",
-    cursor: "pointer",
-    transition: "transform 0.2s ease, opacity 0.2s ease",
-    fontWeight: "500",
-  },
-  fileInput: {
-    fontSize: "0.95rem",
-    color: "#9CA3AF",
+    transition: "border-color 0.2s ease",
   },
 };
