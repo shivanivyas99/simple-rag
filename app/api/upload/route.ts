@@ -18,14 +18,32 @@ if (!process.env.PINECONE_ENVIRONMENT) {
   throw new Error('PINECONE_ENVIRONMENT is not set');
 }
 
+if (!process.env.ABSOLUTE_FILESIZE_LIMIT_TOKENS) {
+  throw new Error('ABSOLUTE_FILESIZE_LIMIT_TOKENS is not set');
+}
+
 const pinecone = new Pinecone({
   apiKey: process.env.PINECONE_API_KEY,
-  environment: process.env.PINECONE_ENVIRONMENT
 });
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+// Function to chunk text with optional overlap
+function chunkText(text: string, maxTokens: number = 300, overlap: number = 50) {
+  const chunks: string[] = [];
+  let start = 0;
+
+  while (start < text.length) {
+    const end = Math.min(start + maxTokens, text.length);
+    const chunk = text.slice(start, end);
+    chunks.push(chunk);
+    start += maxTokens - overlap;
+  }
+
+  return chunks;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -42,35 +60,51 @@ export async function POST(req: NextRequest) {
     try {
       // Convert file to text and truncate if needed
       const text = await file.text();
-      const truncatedText = text.slice(0, 20000);
+      if (text.length > Number(process.env.ABSOLUTE_FILESIZE_LIMIT_TOKENS)) {
+        console.log("The file has exceeded the max limit of tokens: " + Number(process.env.ABSOLUTE_FILESIZE_LIMIT_TOKENS));
+      }
+      const truncatedText = text.slice(0, Number(process.env.ABSOLUTE_FILESIZE_LIMIT_TOKENS));
+    
 
-      // Generate embeddings using OpenAI
-      const embedding = await openai.embeddings.create({
-        model: "text-embedding-3-small",
-        input: truncatedText,
+
+      // Chunk the text into smaller pieces
+      const chunks = chunkText(truncatedText);
+      console.log(`Document split into ${chunks.length} chunks.`); // Log the number of chunks
+      chunks.forEach((chunk, index) => {
+        console.log(`Chunk ${index + 1}: ${chunk.slice(0, 50)}...`); // Log the first 50 characters of each chunk
       });
-      console.log(`File "${file.name}" successfully converted to vector embeddings`);
 
       // Initialize the index
       const indexName = process.env.PINECONE_INDEX_NAME;
       if (!indexName) throw new Error('PINECONE_INDEX_NAME is not set');
       const index = pinecone.index(indexName);
 
-      const docId = `doc_${Date.now()}`;
-      // Create a vector using the embeddings
-      const vector = {
-        id: docId,
-        values: embedding.data[0].embedding,
-        metadata: {
-          filename: file.name,
-          text: truncatedText,
-          fullLength: text.length
-        },
-      };
+      const vectors = [];
+      for (const [i, chunk] of chunks.entries()) {
+        // Generate embeddings for each chunk
+        const embedding = await openai.embeddings.create({
+          model: "text-embedding-3-small",
+          input: chunk,
+        });
 
-      // Upsert the vector to Pinecone
-      await index.upsert([vector]);
-      console.log(`File "${file.name}" successfully stored in Pinecone database with ID: ${docId}`);
+        const vector = {
+          id: `doc_${Date.now()}_chunk_${i}`,
+          values: embedding.data[0].embedding,
+          metadata: {
+            filename: file.name,
+            chunkIndex: i,
+            text: chunk,
+            fullLength: text.length,
+          },
+        };
+
+        vectors.push(vector);
+      }
+
+      // Upsert all vectors to Pinecone
+      await index.upsert(vectors);
+      console.log(`File "${file.name}" successfully chunked and stored in Pinecone database`);
+
     } catch (innerError: any) {
       console.error("Pinecone operation failed:", innerError);
       return NextResponse.json(
@@ -78,11 +112,11 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       );
     }
-    
+
     return NextResponse.json({
       success: true,
       message: "File received and stored in Pinecone",
-      filename: file.name
+      filename: file.name,
     });
 
   } catch (error) {
