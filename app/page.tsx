@@ -26,16 +26,18 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Upload failed');
+        const errorText = await response.text();
+        console.error('Server response:', errorText);
+        throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
       setUploadStatus(`Successfully uploaded: ${file.name}`);
       setFile(null);
-      // Clear file input
+      
       const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
       if (fileInput) fileInput.value = '';
+      
     } catch (error) {
       console.error('Error uploading file:', error);
       setUploadStatus(error instanceof Error ? error.message : 'Upload failed');
@@ -53,31 +55,37 @@ export default function Home() {
     try {
       const response = await fetch("/api/ask", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
         body: JSON.stringify({ question }),
       });
 
-      if (!response.ok) {
-        const errorDetails = await response.json();
-        throw new Error(errorDetails.error || "Failed to fetch answer");
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        throw new Error("Invalid response from server");
       }
 
-      const data = await response.json();
-      const matchesText = data.matches
-        .map((match: { text: string; score: number }, index: number) => {
-          return `Match ${index + 1} (Score: ${(match.score * 100).toFixed(1)}%):\n${match.text}`;
-        })
-        .join("\n\n");
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to fetch answer");
+      }
 
       setMessages([
         ...updatedMessages,
-        { role: "assistant" as const, content: matchesText },
+        { role: "assistant" as const, content: data.answer || "No answer provided" },
       ]);
       setQuestion("");
     } catch (error) {
+      console.error("Error:", error);
       setMessages([
         ...updatedMessages,
-        { role: "assistant", content: `Error: ${error instanceof Error ? error.message : "Failed to get response"}` },
+        { 
+          role: "assistant" as const, 
+          content: `Error: ${error instanceof Error ? error.message : "Failed to get response"}` 
+        },
       ]);
     } finally {
       setIsLoading(false);
