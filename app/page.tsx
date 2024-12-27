@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, CSSProperties } from "react";
+import { useState, CSSProperties, useEffect } from "react";
 
 export default function Home() {
   const [question, setQuestion] = useState("");
@@ -8,6 +8,24 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [uploadStatus, setUploadStatus] = useState<string>("");
+  const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+  const [savedFiles, setSavedFiles] = useState<string[]>([]);
+
+  useEffect(() => {
+    const fetchSavedFiles = async () => {
+      try {
+        const response = await fetch('/api/files');
+        const data = await response.json();
+        if (data.files) {
+          setSavedFiles(data.files);
+        }
+      } catch (error) {
+        console.error('Error fetching saved files:', error);
+      }
+    };
+
+    fetchSavedFiles();
+  }, []);
 
   const handleFileUpload = async (file: File | null) => {
     if (!file) {
@@ -33,6 +51,7 @@ export default function Home() {
 
       const data = await response.json();
       setUploadStatus(`Successfully uploaded: ${file.name}`);
+      setUploadedFiles(prev => [...new Set([...prev, file.name])]);
       setFile(null);
       
       const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
@@ -59,7 +78,10 @@ export default function Home() {
           "Content-Type": "application/json",
           "Accept": "application/json"
         },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ 
+          question,
+          selectedFile: file?.name || uploadStatus.replace("Selected file: ", "")
+        }),
       });
 
       let data;
@@ -103,11 +125,39 @@ export default function Home() {
         <div style={styles.uploadSection}>
           <h2 style={styles.sectionTitle}>Upload Documents</h2>
           <div style={styles.uploadControls}>
+            <select 
+              style={styles.fileSelect}
+              onChange={(e) => {
+                const fileName = e.target.value;
+                if (fileName === 'upload-new') {
+                  // Trigger file input click when "Upload New File" is selected
+                  const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+                  if (fileInput) fileInput.click();
+                } else if (fileName) {
+                  setUploadStatus(`Selected file: ${fileName}`);
+                }
+              }}
+            >
+              <option value="">Choose or upload a file...</option>
+              <option value="upload-new">📤 Upload New File</option>
+              {savedFiles.length > 0 && <option disabled>── Saved Files ──</option>}
+              {savedFiles.map((fileName, index) => (
+                <option key={index} value={fileName}>
+                  📄 {fileName}
+                </option>
+              ))}
+            </select>
             <input
               type="file"
               accept=".txt,.doc,.docx,.pdf"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              style={styles.fileInput}
+              onChange={(e) => {
+                const selectedFile = e.target.files?.[0];
+                if (selectedFile) {
+                  setFile(selectedFile);
+                  setUploadStatus(`Selected file: ${selectedFile.name}`);
+                }
+              }}
+              style={{ display: 'none' }} // Hide the file input
             />
             <button
               onClick={() => file && handleFileUpload(file)}
@@ -214,9 +264,9 @@ const styles: Record<string, CSSProperties> = {
     boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
   },
   uploadControls: {
-    display: "flex",
-    gap: "1rem",
-    alignItems: "center",
+    display: 'flex',
+    gap: '1rem',
+    alignItems: 'center',
   },
   uploadStatus: {
     marginTop: "1rem",
@@ -299,5 +349,32 @@ const styles: Record<string, CSSProperties> = {
     fontSize: "1rem",
     outline: "none",
     transition: "border-color 0.2s ease",
+  },
+  fileSelect: {
+    flex: 1,
+    padding: "0.75rem 1rem",
+    borderRadius: "0.5rem",
+    backgroundColor: "#2d3748",
+    color: "#e2e8f0",
+    border: "1px solid #4a5568",
+    cursor: "pointer",
+    fontSize: "1rem",
+    outline: "none",
+    appearance: "none",
+    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "right 1rem center",
+    paddingRight: "2.5rem",
+  },
+  orDivider: {
+    color: '#94a3b8',
+    fontSize: '0.9rem',
+    padding: '0 0.5rem',
+  },
+  fileInputGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1rem',
+    flex: 1,
   },
 };
